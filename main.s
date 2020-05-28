@@ -55,7 +55,7 @@ TEXT ·asmjmpgowrite(SB), NOSPLIT, $0
     MOVQ DI, 0(SP)
     MOVQ SI, 8(SP)
     MOVQ DX, 16(SP)
-    
+
     CALL ·gowrite(SB)
 
     ADDQ $24, SP
@@ -66,10 +66,3 @@ TEXT ·asmjmpgowrite(SB), NOSPLIT, $0
     MOVQ 8(AX), SP
 
     RET
-
-TEXT ·dummy(SB), $0
-    RET
-    MOVQ 0(TLS), CX
-    MOVQ CX, 0(TLS)
-    MOVQ $0x1122334455667788, AX
-    JMP AX

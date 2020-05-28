@@ -79,23 +79,6 @@ func callc0(gb *CGOBlock, fn int) {
 	gb.p[gb.pp] = nil
 }
 
-func loadObject() error {
-	f, err := macho.Open("c.o")
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	for _, s := range f.Sections {
-		if s.Name == "__text" {
-			for _, r := range s.Relocs {
-				fmt.Printf("reloc %x %d\n", r.Addr, r.Len)
-			}
-		}
-	}
-	return nil
-}
-
 func createCGOBlock(filename string) (*CGOBlock, error) {
 	objfile, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -237,10 +220,7 @@ func run() error {
 	return nil
 }
 
-func dummy()
-
 func main() {
-	dummy()
 	if err := run(); err != nil {
 		log.Fatalln(err)
 	}
