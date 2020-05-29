@@ -55,13 +55,13 @@ func gowrite(fd, p, len uintptr) {
 }
 
 func callc0(gb *CGOBlock, fn int) {
-	// g := asmgetg()
+	g := asmgetg()
 
-	// if gb.pp == 0 {
-	// 	gb.g = g
-	// } else if gb.g != g {
-	// 	panic("call in different goroutine")
-	// }
+	if gb.pp == 0 {
+		gb.g = g
+	} else if gb.g != g {
+		panic("call in different goroutine")
+	}
 
 	pgb := asmgetcgob()
 	csp := gb.csp[gb.pp]
@@ -128,8 +128,6 @@ func createCGOBlock(filename string) (*CGOBlock, error) {
 		stubs = append(stubs, b[:p]...)
 	}
 
-	// fmt.Printf("%+v\n", f.Symtab.Syms)
-
 	// block:
 	// stack
 	// text
@@ -141,13 +139,17 @@ func createCGOBlock(filename string) (*CGOBlock, error) {
 
 	fns := map[string]int{}
 	for _, s := range f.Symtab.Syms {
-		if s.Type == 15 {
-			fns[s.Name] = objStart + int(f.Sections[s.Sect-1].Offset) + int(s.Value)
+		switch s.Type {
+		case 15:
+			off := objStart + int(f.Sections[s.Sect-1].Offset) + int(s.Value)
+			fns[s.Name] = off
 		}
 	}
 
+	// fmt.Printf("syms %+v\n", f.Symtab.Syms)
+
 	for _, s := range f.Sections {
-		// fmt.Printf("%+v\n", s)
+		// fmt.Printf("section %+v\n", s)
 		if s.Name == "__text" {
 			for _, r := range s.Relocs {
 				// when Scattered == false && Extern == true, Value is the symbol number.
@@ -157,21 +159,36 @@ func createCGOBlock(filename string) (*CGOBlock, error) {
 					panic("unsupported")
 				}
 				if r.Extern {
-					if r.Type != uint8(macho.X86_64_RELOC_BRANCH) {
-						panic("unsupported")
-					}
 					if r.Len != 2 {
 						panic("unsupported")
 					}
-					name := f.Symtab.Syms[r.Value].Name
-					f, ok := gonamefuncs[name]
-					if !ok {
-						return nil, fmt.Errorf("%s not supported", name)
+
+					sym := f.Symtab.Syms[r.Value]
+
+					switch r.Type {
+					case uint8(macho.X86_64_RELOC_BRANCH):
+						gof, ok := gonamefuncs[sym.Name]
+						if !ok {
+							return nil, fmt.Errorf("%s not supported", sym.Name)
+						}
+						p := objStart + int(s.Offset) + int(r.Addr)
+						dst := stubStart + gof.stubOff
+						delta := dst - (p + 4)
+						// fmt.Printf("reloc branch %d dst %x set %x %+v \n", r.Addr, dst-objStart, delta, sym)
+						binary.LittleEndian.PutUint32(objfile[p-objStart:], uint32(delta))
+
+					case uint8(macho.X86_64_RELOC_SIGNED):
+						p := objStart + int(s.Offset) + int(r.Addr)
+						sec := f.Sections[sym.Sect-1]
+						dst := objStart + int(sec.Offset) + int(sym.Value) - int(sec.Addr)
+						delta := dst - (p + 4)
+						// fmt.Printf("reloc %d dst %x set %x %+v %+v\n", r.Addr, dst-objStart, delta, sym, f.Sections[sym.Sect-1])
+						binary.LittleEndian.PutUint32(objfile[p-objStart:], uint32(delta))
+
+					default:
+						panic("unsupported")
 					}
-					p := objStart + int(s.Offset) + int(r.Addr)
-					dst := stubStart + f.stubOff
-					delta := dst - (p + 4)
-					binary.LittleEndian.PutUint32(objfile[p-objStart:], uint32(delta))
+
 				}
 			}
 		}
